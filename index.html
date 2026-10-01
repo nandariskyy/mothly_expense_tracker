@@ -1,112 +1,481 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Expense Tracker App</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-
-  <div class="tracker-app">
-
-    <header class="tracker-header">
-      <h1 class="tracker-header__title">Track<span style="color:var(--accent-blue)">Uangku</span></h1>
-      <div class="tracker-header__user">
-        <div class="tracker-header__user-info">
-          <span class="tracker-header__greeting">Halo, <strong>Nanda Risky Firmandany</strong></span>
-          <span class="tracker-header__date">Bulan Ini</span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Pencatat Pengeluaran Bulanan Lokal - Kelola pengeluaran harian dan bulanan dengan mudah, cepat, dan aman di perangkat lokal Anda."
+    />
+    <title>Pencatat Pengeluaran Bulanan (Monthly Expense Tracker)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="tracker-app">
+      <!-- Header Navigation & Toolbar -->
+      <header class="tracker-header">
+        <div class="tracker-header__brand">
+          <div class="tracker-header__logo-icon">💸</div>
+          <div>
+            <h1 class="tracker-header__title">
+              Expense<span class="accent-text">Tracker</span>
+            </h1>
+            <p class="tracker-header__subtitle">
+              Pencatat Pengeluaran Bulanan Lokal
+            </p>
+          </div>
         </div>
-        <div class="tracker-header__avatar" role="img" aria-label="Avatar Pengguna" aria-hidden="true">👤</div>
+
+        <div class="tracker-header__controls">
+          <!-- Month & Year Filter Selector -->
+          <div class="tracker-month-selector" id="monthSelectorContainer">
+            <label for="monthPicker" class="tracker-month-selector__label"
+              >Periode Bulan:</label
+            >
+            <div class="tracker-month-selector__input-wrapper">
+              <button
+                type="button"
+                id="prevMonthBtn"
+                class="tracker-btn-icon"
+                title="Bulan Sebelumnya"
+                aria-label="Bulan Sebelumnya"
+              >
+                ◀
+              </button>
+              <input
+                type="month"
+                id="monthPicker"
+                class="tracker-month-picker"
+                aria-label="Pilih Bulan dan Tahun"
+              />
+              <button
+                type="button"
+                id="nextMonthBtn"
+                class="tracker-btn-icon"
+                title="Bulan Berikutnya"
+                aria-label="Bulan Berikutnya"
+              >
+                ▶
+              </button>
+            </div>
+          </div>
+
+          <!-- Backup / Restore Actions -->
+          <div class="tracker-header__actions">
+            <button
+              type="button"
+              id="exportBtn"
+              class="tracker-btn tracker-btn--secondary"
+              title="Ekspor data transaksi"
+            >
+              <span class="btn-icon">📥</span> Ekspor
+            </button>
+            <button
+              type="button"
+              id="importTriggerBtn"
+              class="tracker-btn tracker-btn--secondary"
+              title="Impor file JSON cadangan"
+            >
+              <span class="btn-icon">📤</span> Impor
+            </button>
+            <input
+              type="file"
+              id="importFileInput"
+              accept=".json"
+              class="visually-hidden"
+            />
+          </div>
+        </div>
+      </header>
+
+      <main class="tracker-main">
+        <!-- Section 1: Summary Cards -->
+        <section class="tracker-summary" aria-labelledby="summary-heading">
+          <h2 id="summary-heading" class="visually-hidden">
+            Ringkasan Pengeluaran Bulan Ini
+          </h2>
+
+          <!-- Total Monthly Expense Card -->
+          <div class="tracker-summary__card tracker-summary__card--total">
+            <div class="tracker-summary__header">
+              <span class="tracker-summary__icon">💳</span>
+              <h3 class="tracker-summary__label">
+                Total Pengeluaran Bulan Ini
+              </h3>
+            </div>
+            <p class="tracker-summary__amount" id="totalExpenseAmount">Rp 0</p>
+            <div class="tracker-summary__footer">
+              <span class="tracker-summary__badge" id="selectedMonthBadge"
+                >Bulan Ini</span
+              >
+              <span class="tracker-summary__subtext" id="transactionCountBadge"
+                >0 Transaksi</span
+              >
+            </div>
+          </div>
+
+          <!-- Daily Average Expense Card -->
+          <div class="tracker-summary__card tracker-summary__card--daily">
+            <div class="tracker-summary__header">
+              <span class="tracker-summary__icon">📅</span>
+              <h3 class="tracker-summary__label">Rata-Rata Harian</h3>
+            </div>
+            <p class="tracker-summary__amount" id="dailyAverageAmount">Rp 0</p>
+            <div class="tracker-summary__footer">
+              <span class="tracker-summary__subtext" id="daysPassedText"
+                >Berdasarkan hari berlalu</span
+              >
+            </div>
+          </div>
+
+          <!-- Top Category Card -->
+          <div class="tracker-summary__card tracker-summary__card--category">
+            <div class="tracker-summary__header">
+              <span class="tracker-summary__icon">🏆</span>
+              <h3 class="tracker-summary__label">Kategori Terbesar</h3>
+            </div>
+            <p class="tracker-summary__category-name" id="topCategoryName">-</p>
+            <div class="tracker-summary__footer">
+              <span
+                class="tracker-summary__category-amount"
+                id="topCategoryAmount"
+                >Rp 0</span
+              >
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 2: Form & Transaction History Grid -->
+        <div class="tracker-content-grid">
+          <!-- Transaction Form (Add / Edit) -->
+          <section class="tracker-form-section" aria-labelledby="form-heading">
+            <div class="tracker-card">
+              <div class="tracker-card__header">
+                <h2 id="form-heading" class="tracker-card__title">
+                  <span id="formTitleText">Tambah Pengeluaran</span>
+                </h2>
+                <button
+                  type="button"
+                  id="cancelEditBtn"
+                  class="tracker-btn tracker-btn--text visually-hidden"
+                >
+                  Batal Edit
+                </button>
+              </div>
+
+              <form id="transactionForm" class="tracker-form" novalidate>
+                <input type="hidden" id="editTransactionId" />
+
+                <div class="tracker-form__group">
+                  <label class="tracker-form__label" for="transactionTitleInput"
+                    >Deskripsi Pengeluaran
+                    <span class="required">*</span></label
+                  >
+                  <input
+                    type="text"
+                    id="transactionTitleInput"
+                    class="tracker-form__input"
+                    placeholder="Misal: Makan Siang, Bensin, Listrik..."
+                    required
+                  />
+                  <span class="tracker-form__error" id="titleError"></span>
+                </div>
+
+                <div class="tracker-form__group">
+                  <label
+                    class="tracker-form__label"
+                    for="transactionAmountInput"
+                    >Nominal (Rp) <span class="required">*</span></label
+                  >
+                  <div class="tracker-form__input-prefix-wrapper">
+                    <span class="tracker-form__prefix">Rp</span>
+                    <input
+                      type="number"
+                      id="transactionAmountInput"
+                      class="tracker-form__input tracker-form__input--prefix"
+                      placeholder="50.000"
+                      min="1"
+                      step="1"
+                      required
+                    />
+                  </div>
+                  <span class="tracker-form__error" id="amountError"></span>
+                </div>
+
+                <div class="tracker-form__row">
+                  <div class="tracker-form__group">
+                    <label
+                      class="tracker-form__label"
+                      for="transactionDateInput"
+                      >Tanggal <span class="required">*</span></label
+                    >
+                    <input
+                      type="date"
+                      id="transactionDateInput"
+                      class="tracker-form__input"
+                      required
+                    />
+                    <span class="tracker-form__error" id="dateError"></span>
+                  </div>
+
+                  <div class="tracker-form__group">
+                    <label
+                      class="tracker-form__label"
+                      for="transactionCategorySelect"
+                      >Kategori <span class="required">*</span></label
+                    >
+                    <select
+                      id="transactionCategorySelect"
+                      class="tracker-form__input tracker-form__select"
+                      required
+                    >
+                      <option value="Makanan">🍔 Makanan</option>
+                      <option value="Bensin">⛽ Bensin</option>
+                      <option value="Body Care">🧴 Body Care</option>
+                      <option value="Internet">🌐 Internet</option>
+                      <option value="Belanja">🛍️ Belanja</option>
+                      <option value="Lainnya">📦 Lainnya</option>
+                    </select>
+                    <span class="tracker-form__error" id="categoryError"></span>
+                  </div>
+                </div>
+
+                <div class="tracker-form__actions">
+                  <button
+                    type="submit"
+                    id="submitTransactionBtn"
+                    class="tracker-btn tracker-btn--primary"
+                  >
+                    <span id="submitBtnText">Simpan Pengeluaran</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Quick Category Breakdown -->
+            <div class="tracker-card tracker-card--breakdown">
+              <div class="tracker-card__header">
+                <h3 class="tracker-card__title">
+                  Distribusi Kategori Bulan Ini
+                </h3>
+              </div>
+              <div
+                id="categoryBreakdownList"
+                class="tracker-category-breakdown"
+              >
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </section>
+
+          <!-- Transaction History List Section -->
+          <section
+            class="tracker-history-section"
+            aria-labelledby="history-heading"
+          >
+            <div class="tracker-card tracker-card--history">
+              <div class="tracker-history__top">
+                <div
+                  class="tracker-card__header tracker-card__header--no-margin"
+                >
+                  <h2 id="history-heading" class="tracker-card__title">
+                    Daftar Pengeluaran
+                  </h2>
+                  <span class="tracker-history__period" id="historyPeriodLabel"
+                    >Bulan Ini</span
+                  >
+                </div>
+
+                <!-- Search & Filter Bar -->
+                <div class="tracker-filter-bar">
+                  <div class="tracker-search-box">
+                    <span class="tracker-search-box__icon">🔍</span>
+                    <input
+                      type="search"
+                      id="searchTransactionInput"
+                      class="tracker-search-box__input"
+                      placeholder="Cari berdasarkan deskripsi..."
+                      aria-label="Cari transaksi"
+                    />
+                  </div>
+                  <select
+                    id="filterCategorySelect"
+                    class="tracker-filter-select"
+                    aria-label="Filter kategori"
+                  >
+                    <option value="ALL">Semua Kategori</option>
+                    <option value="Makanan">🍔 Makanan</option>
+                    <option value="Bensin">⛽ Bensin</option>
+                    <option value="Body Care">🧴 Body Care</option>
+                    <option value="Internet">🌐 Internet</option>
+                    <option value="Belanja">🛍️ Belanja</option>
+                    <option value="Lainnya">📦 Lainnya</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Transaction List Container -->
+              <div
+                id="transactionListContainer"
+                class="tracker-transaction-list"
+                role="list"
+              >
+                <!-- Transactions rendered here dynamically -->
+              </div>
+
+              <!-- Empty State Container -->
+              <div
+                id="emptyStateContainer"
+                class="tracker-empty-state visually-hidden"
+              >
+                <div class="tracker-empty-state__icon">🍃</div>
+                <h3 class="tracker-empty-state__title">
+                  Belum ada pengeluaran di periode ini
+                </h3>
+                <p class="tracker-empty-state__desc">
+                  Catat pengeluaran harian Anda melalui formulir di samping
+                  untuk mulai melacak keuangan bulanan.
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <!-- Modal Export Confirmation / Choice -->
+      <div id="exportModal" class="tracker-modal-backdrop visually-hidden">
+        <div
+          class="tracker-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="exportModalTitle"
+        >
+          <div class="tracker-modal__header">
+            <h3 id="exportModalTitle" class="tracker-modal__title">
+              Pilih Format Ekspor Data
+            </h3>
+            <button
+              type="button"
+              id="closeExportModalBtn"
+              class="tracker-btn-icon"
+              aria-label="Tutup"
+            >
+              ✕
+            </button>
+          </div>
+          <div class="tracker-modal__body">
+            <p>
+              Pilih format cadangan file transaksi untuk disimpan ke komputer
+              Anda:
+            </p>
+            <div class="tracker-modal__export-options">
+              <button
+                type="button"
+                id="exportJsonBtn"
+                class="tracker-modal__export-card"
+              >
+                <span class="tracker-modal__export-icon">📄</span>
+                <strong>Format JSON (.json)</strong>
+                <small
+                  >Direkomendasikan untuk pencadangan (*backup*) & pemulihan
+                  penuh.</small
+                >
+              </button>
+              <button
+                type="button"
+                id="exportCsvBtn"
+                class="tracker-modal__export-card"
+              >
+                <span class="tracker-modal__export-icon">📊</span>
+                <strong>Format CSV (.csv)</strong>
+                <small
+                  >Cocok untuk dibuka dan dianalisis di Microsoft Excel / Google
+                  Sheets.</small
+                >
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </header>
 
-    <main>
-      <section class="tracker-summary" aria-labelledby="summary-heading">
-        <h2 id="summary-heading" class="visually-hidden">Ringkasan Keuangan</h2>
-
-        <div class="tracker-summary__balance">
-          <h3 class="tracker-summary__label">Saldo Saat Ini</h3>
-          <p class="tracker-summary__balance-amount">Rp 0</p>
-        </div>
-
-        <div class="tracker-summary__stat">
-          <h3 class="tracker-summary__label">Pemasukan</h3>
-          <p class="tracker-summary__stat-amount tracker-summary__stat-amount--income">Rp 0</p>
-        </div>
-
-        <div class="tracker-summary__stat">
-          <h3 class="tracker-summary__label">Pengeluaran</h3>
-          <p class="tracker-summary__stat-amount tracker-summary__stat-amount--expense">Rp 0</p>
-        </div>
-      </section>
-
-      <section class="tracker-form-section" aria-labelledby="form-heading">
-        <div class="tracker-form-section__card">
-          <h2 id="form-heading" class="tracker-form-section__heading">Tambah Pencatatan Baru</h2>
-
-          <form id="transactionForm" data-testid="transactionForm" class="tracker-form">
-            <div class="tracker-form__field">
-              <label class="tracker-form__label" for="transactionFormTitleInput">Keterangan</label>
-              <input type="text" id="transactionFormTitleInput" data-testid="transactionFormTitleInput" class="tracker-form__input" placeholder="Misal: Makan siang...">
-            </div>
-            <div class="tracker-form__field">
-              <label class="tracker-form__label" for="transactionFormAmountInput">Nominal (Rp)</label>
-              <input type="number" id="transactionFormAmountInput" data-testid="transactionFormAmountInput" class="tracker-form__input" placeholder="50000">
-            </div>
-            <div class="tracker-form__field">
-              <label class="tracker-form__label" for="transactionFormDateInput">Tanggal</label>
-              <input type="date" id="transactionFormDateInput" data-testid="transactionFormDateInput" class="tracker-form__input">
-            </div>
-            <div class="tracker-form__field">
-              <label class="tracker-form__label" for="transactionFormTypeSelect">Klasifikasi</label>
-              <select id="transactionFormTypeSelect" data-testid="transactionFormTypeSelect" class="tracker-form__input">
-                <option value="income">Uang Masuk (+)</option>
-                <option value="expense">Uang Keluar (-)</option>
-              </select>
-            </div>
-            <button type="submit" data-testid="transactionFormSubmitButton" class="tracker-form__submit">Simpan</button>
-          </form>
-        </div>
-      </section>
-
-      <section class="tracker-history" aria-labelledby="history-heading">
-        <h2 id="history-heading" class="visually-hidden">Riwayat Transaksi</h2>
-
-        <div class="tracker-search">
-          <form id="searchTransactionForm" data-testid="searchTransactionForm" class="tracker-search__form" role="search">
-            <input type="search" id="searchTransactionFormTitleInput" data-testid="searchTransactionFormTitleInput" class="tracker-form__input" placeholder="Cari transaksi berdasarkan judul..." aria-label="Kata kunci pencarian transaksi">
-            <button type="submit" data-testid="searchTransactionFormSubmitButton" class="tracker-search__submit" aria-label="Mulai Pencarian">Cari</button>
-          </form>
-        </div>
-
-        <div class="tracker-history__grid">
-          <div class="tracker-transaction-list">
-            <div class="tracker-transaction-list__header">
-              <h3 class="tracker-transaction-list__title">Arus Pemasukan</h3>
-            </div>
-            <div id="incomeList" data-testid="incomeList" class="tracker-transaction-list__container">
-            </div>
+      <!-- Modal Delete Confirmation -->
+      <div id="deleteModal" class="tracker-modal-backdrop visually-hidden">
+        <div
+          class="tracker-modal tracker-modal--danger"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="deleteModalTitle"
+        >
+          <div class="tracker-modal__header">
+            <h3 id="deleteModalTitle" class="tracker-modal__title">
+              Konfirmasi Hapus
+            </h3>
+            <button
+              type="button"
+              id="closeDeleteModalBtn"
+              class="tracker-btn-icon"
+              aria-label="Tutup"
+            >
+              ✕
+            </button>
           </div>
-
-          <div class="tracker-transaction-list">
-            <div class="tracker-transaction-list__header">
-              <h3 class="tracker-transaction-list__title">Arus Pengeluaran</h3>
-            </div>
-            <div id="expenseList" data-testid="expenseList" class="tracker-transaction-list__container">
-            </div>
+          <div class="tracker-modal__body">
+            <p>
+              Apakah Anda yakin ingin menghapus pengeluaran
+              <strong id="deleteItemTitle">...</strong> senilai
+              <strong id="deleteItemAmount">...</strong>?
+            </p>
+            <p class="tracker-modal__warning-text">
+              Tindakan ini tidak dapat dibatalkan.
+            </p>
+          </div>
+          <div class="tracker-modal__footer">
+            <button
+              type="button"
+              id="cancelDeleteBtn"
+              class="tracker-btn tracker-btn--secondary"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              id="confirmDeleteBtn"
+              class="tracker-btn tracker-btn--danger"
+            >
+              Hapus Transaksi
+            </button>
           </div>
         </div>
-      </section>
+      </div>
 
-    </main>
+      <!-- Notification Toast -->
+      <div
+        id="toastNotification"
+        class="tracker-toast visually-hidden"
+        role="status"
+        aria-live="polite"
+      >
+        <span id="toastIcon" class="tracker-toast__icon">✅</span>
+        <span id="toastMessage" class="tracker-toast__message"
+          >Pesan notifikasi</span
+        >
+      </div>
 
-    <footer class="tracker-footer">
-      <p>&#169; 2026 TrackerUangku. Disusun sebagai Project Submission Front-End Web.</p>
-    </footer>
+      <!-- Footer -->
+      <footer class="tracker-footer">
+        <p>
+          &copy; 2026 Monthly Expense Tracker &bull; Data tersimpan secara lokal
+          dan aman di perangkat Anda.
+        </p>
+      </footer>
+    </div>
 
-  </div>
-
-  <script src="main.js"></script>
-</body>
+    <script src="main.js"></script>
+  </body>
 </html>
