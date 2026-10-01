@@ -52,7 +52,7 @@ function initDatabase() {
  */
 function seedInitialDataIfEmpty() {
   const countRow = db.prepare("SELECT COUNT(*) as count FROM expenses").get();
-  if (countRow.count === 0) {
+  if (countRow && countRow.count === 0) {
     const today = new Date();
     const y = today.getFullYear();
     const m = String(today.getMonth() + 1).padStart(2, "0");
