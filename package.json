@@ -1,0 +1,24 @@
+{
+  "name": "monthly-expense-tracker",
+  "version": "1.0.0",
+  "description": "Pencatat Pengeluaran Bulanan Lokal berbasis Node.js, Express, dan SQLite",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "expense-tracker",
+    "budget",
+    "sqlite",
+    "express",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}

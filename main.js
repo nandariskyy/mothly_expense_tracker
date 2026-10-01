@@ -1,12 +1,12 @@
 /**
  * ========================================================
  * Monthly Expense Tracker — main.js
- * Logika Antarmuka Pengguna & Manajemen Data Pengeluaran
+ * Logika Antarmuka Pengguna & Integrasi REST API (Node.js + SQLite)
  * ========================================================
  */
 
-// Kunci penyimpanan lokal
-const STORAGE_KEY = "monthly_expense_tracker_db";
+// Base URL API Backend (relatif ke host server yang sama)
+const API_BASE_URL = "/api";
 
 // Kategori & Konfigurasi Ikon
 const CATEGORY_CONFIG = {
@@ -25,6 +25,7 @@ let transactionToDeleteId = null;
 let currentSelectedMonth = getCurrentMonthYearString(); // Format: "YYYY-MM"
 let currentSearchQuery = "";
 let currentCategoryFilter = "ALL";
+let isFetching = false;
 
 // Helper Tanggal & Waktu
 function getCurrentMonthYearString() {
@@ -64,73 +65,6 @@ function getMonthNameIndonesian(yearMonthString) {
   return date.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
 }
 
-// Data Dummy Awal jika Storage Kosong (untuk memudahkan demonstrasi)
-function getInitialDummyData() {
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = String(today.getMonth() + 1).padStart(2, "0");
-
-  return [
-    {
-      id: Date.now() - 400000,
-      title: "Makan Siang Nasi Padang",
-      amount: 35000,
-      category: "Makanan",
-      date: `${y}-${m}-01`,
-      created_at: new Date().toISOString()
-    },
-    {
-      id: Date.now() - 300000,
-      title: "Bensin Motor Bulanan",
-      amount: 50000,
-      category: "Bensin",
-      date: `${y}-${m}-01`,
-      created_at: new Date().toISOString()
-    },
-    {
-      id: Date.now() - 200000,
-      title: "Paket Internet & Wi-Fi",
-      amount: 275000,
-      category: "Internet",
-      date: `${y}-${m}-01`,
-      created_at: new Date().toISOString()
-    },
-    {
-      id: Date.now() - 100000,
-      title: "Sabun Cuci Muka & Skincare",
-      amount: 85000,
-      category: "Body Care",
-      date: `${y}-${m}-01`,
-      created_at: new Date().toISOString()
-    }
-  ];
-}
-
-// Inisialisasi & Penyimpanan Data
-function loadTransactions() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      return JSON.parse(raw);
-    }
-  } catch (error) {
-    console.error("Gagal memuat data dari localStorage:", error);
-  }
-  const dummy = getInitialDummyData();
-  saveTransactions(dummy);
-  return dummy;
-}
-
-function saveTransactions(dataToSave) {
-  try {
-    transactions = dataToSave || transactions;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
-  } catch (error) {
-    console.error("Gagal menyimpan ke localStorage:", error);
-    showToast("Gagal menyimpan data ke penyimpanan lokal.", "error");
-  }
-}
-
 // DOM Elements
 const monthPicker = document.getElementById("monthPicker");
 const prevMonthBtn = document.getElementById("prevMonthBtn");
@@ -148,6 +82,7 @@ const categoryBreakdownListEl = document.getElementById("categoryBreakdownList")
 const transactionForm = document.getElementById("transactionForm");
 const formTitleText = document.getElementById("formTitleText");
 const submitBtnText = document.getElementById("submitBtnText");
+const submitTransactionBtn = document.getElementById("submitTransactionBtn");
 const cancelEditBtn = document.getElementById("cancelEditBtn");
 const editTransactionIdInput = document.getElementById("editTransactionId");
 const transactionTitleInput = document.getElementById("transactionTitleInput");
@@ -202,6 +137,109 @@ function showToast(message, type = "success") {
 }
 
 // ==========================================
+// REST API CALLS (Node.js + SQLite)
+// ==========================================
+
+/**
+ * Mengambil data transaksi dan ringkasan dari Backend
+ */
+async function loadDataFromBackend() {
+  try {
+    isFetching = true;
+
+    // Ambil data transaksi bulan aktif dari REST API
+    const params = new URLSearchParams({
+      month: currentSelectedMonth
+    });
+
+    if (currentCategoryFilter !== "ALL") {
+      params.append("category", currentCategoryFilter);
+    }
+
+    if (currentSearchQuery.trim() !== "") {
+      params.append("q", currentSearchQuery.trim());
+    }
+
+    const [expensesResponse, summaryResponse] = await Promise.all([
+      fetch(`${API_BASE_URL}/expenses?${params.toString()}`),
+      fetch(`${API_BASE_URL}/summary?month=${encodeURIComponent(currentSelectedMonth)}`)
+    ]);
+
+    if (!expensesResponse.ok || !summaryResponse.ok) {
+      throw new Error("Gagal menghubungi server API");
+    }
+
+    const expensesJson = await expensesResponse.json();
+    const summaryJson = await summaryResponse.json();
+
+    if (expensesJson.success) {
+      transactions = expensesJson.data || [];
+    }
+
+    if (summaryJson.success) {
+      renderSummaryData(summaryJson.data);
+    }
+
+    renderTransactionList(transactions);
+  } catch (error) {
+    console.error("Error loading data from API:", error);
+    showToast("Gagal memuat data dari server: " + error.message, "error");
+  } finally {
+    isFetching = false;
+  }
+}
+
+/**
+ * Render Ringkasan dari hasil kalkulasi Backend SQLite
+ */
+function renderSummaryData(summary) {
+  if (!summary) return;
+
+  // 1. Total Pengeluaran & Jumlah Transaksi
+  totalExpenseAmountEl.textContent = formatRupiah(summary.totalExpense);
+  transactionCountBadge.textContent = `${summary.transactionCount} Transaksi`;
+
+  // 2. Rata-Rata Harian
+  dailyAverageAmountEl.textContent = formatRupiah(summary.dailyAverage);
+  daysPassedTextEl.textContent = summary.daysDescription || "Berdasarkan hari berlalu";
+
+  // 3. Kategori Terbesar
+  if (summary.topCategory && summary.topCategory !== "-") {
+    const config = CATEGORY_CONFIG[summary.topCategory] || { icon: "🏷️" };
+    topCategoryNameEl.textContent = `${config.icon} ${summary.topCategory}`;
+    topCategoryAmountEl.textContent = `${formatRupiah(summary.topCategoryAmount)} (${summary.topCategoryPercentage}%)`;
+  } else {
+    topCategoryNameEl.textContent = "-";
+    topCategoryAmountEl.textContent = "Rp 0";
+  }
+
+  // 4. Distribusi Kategori
+  renderCategoryBreakdown(summary.categoryBreakdown || [], summary.totalExpense);
+}
+
+function renderCategoryBreakdown(breakdownList, totalExpense) {
+  categoryBreakdownListEl.innerHTML = "";
+
+  breakdownList.forEach((item) => {
+    const config = CATEGORY_CONFIG[item.category] || { icon: "🏷️", barColor: "#64748B" };
+    const percentage = item.percentage || (totalExpense > 0 ? Math.round((item.amount / totalExpense) * 100) : 0);
+
+    const itemEl = document.createElement("div");
+    itemEl.className = "tracker-breakdown-item";
+    itemEl.innerHTML = `
+      <div class="tracker-breakdown-item__meta">
+        <span class="tracker-breakdown-item__name">${config.icon} ${item.category}</span>
+        <span class="tracker-breakdown-item__amount">${formatRupiah(item.amount)} (${percentage}%)</span>
+      </div>
+      <div class="tracker-breakdown-item__bar">
+        <div class="tracker-breakdown-item__fill" style="width: ${percentage}%; background-color: ${config.barColor};"></div>
+      </div>
+    `;
+    categoryBreakdownListEl.appendChild(itemEl);
+  });
+}
+
+// ==========================================
 // LOGIKA PEMILIHAN BULAN
 // ==========================================
 function setMonth(yearMonthString) {
@@ -211,7 +249,7 @@ function setMonth(yearMonthString) {
   selectedMonthBadge.textContent = monthLabel;
   historyPeriodLabel.textContent = monthLabel;
 
-  render();
+  loadDataFromBackend();
 }
 
 function changeMonth(offset) {
@@ -223,132 +261,17 @@ function changeMonth(offset) {
 }
 
 // ==========================================
-// PERHITUNGAN RINGKASAN (SUMMARY)
-// ==========================================
-function updateSummary(filteredMonthlyExpenses) {
-  // 1. Total Pengeluaran Bulan Ini
-  const totalExpense = filteredMonthlyExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  totalExpenseAmountEl.textContent = formatRupiah(totalExpense);
-  transactionCountBadge.textContent = `${filteredMonthlyExpenses.length} Transaksi`;
-
-  // 2. Rata-Rata Harian
-  const [selectedYear, selectedMonth] = currentSelectedMonth.split("-").map(Number);
-  const now = new Date();
-  const isCurrentMonth = now.getFullYear() === selectedYear && (now.getMonth() + 1) === selectedMonth;
-  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
-
-  let divisorDays = 1;
-  if (isCurrentMonth) {
-    divisorDays = Math.max(1, now.getDate());
-    daysPassedTextEl.textContent = `Berdasarkan ${divisorDays} hari yang telah berlalu`;
-  } else if (new Date(selectedYear, selectedMonth - 1, 1) > now) {
-    divisorDays = daysInMonth;
-    daysPassedTextEl.textContent = `Estimasi penuh ${daysInMonth} hari`;
-  } else {
-    divisorDays = daysInMonth;
-    daysPassedTextEl.textContent = `Berdasarkan total ${daysInMonth} hari bulan ini`;
-  }
-
-  const dailyAverage = totalExpense > 0 ? Math.round(totalExpense / divisorDays) : 0;
-  dailyAverageAmountEl.textContent = formatRupiah(dailyAverage);
-
-  // 3. Kategori Terbesar & Distribusi
-  const categoryTotals = {
-    Makanan: 0,
-    Bensin: 0,
-    "Body Care": 0,
-    Internet: 0,
-    Belanja: 0,
-    Lainnya: 0
-  };
-
-  filteredMonthlyExpenses.forEach((item) => {
-    if (categoryTotals[item.category] !== undefined) {
-      categoryTotals[item.category] += Number(item.amount || 0);
-    } else {
-      categoryTotals["Lainnya"] += Number(item.amount || 0);
-    }
-  });
-
-  let topCategory = "-";
-  let topAmount = 0;
-
-  Object.entries(categoryTotals).forEach(([cat, amount]) => {
-    if (amount > topAmount) {
-      topAmount = amount;
-      topCategory = cat;
-    }
-  });
-
-  if (topAmount > 0) {
-    const config = CATEGORY_CONFIG[topCategory] || { icon: "🏷️" };
-    topCategoryNameEl.textContent = `${config.icon} ${topCategory}`;
-    topCategoryAmountEl.textContent = `${formatRupiah(topAmount)} (${Math.round((topAmount / totalExpense) * 100)}%)`;
-  } else {
-    topCategoryNameEl.textContent = "-";
-    topCategoryAmountEl.textContent = "Rp 0";
-  }
-
-  // Render Distribusi Kategori
-  renderCategoryBreakdown(categoryTotals, totalExpense);
-}
-
-function renderCategoryBreakdown(categoryTotals, totalExpense) {
-  categoryBreakdownListEl.innerHTML = "";
-
-  Object.entries(categoryTotals).forEach(([catName, amount]) => {
-    const config = CATEGORY_CONFIG[catName] || { icon: "🏷️", barColor: "#64748B" };
-    const percentage = totalExpense > 0 ? Math.round((amount / totalExpense) * 100) : 0;
-
-    const itemEl = document.createElement("div");
-    itemEl.className = "tracker-breakdown-item";
-    itemEl.innerHTML = `
-      <div class="tracker-breakdown-item__meta">
-        <span class="tracker-breakdown-item__name">${config.icon} ${catName}</span>
-        <span class="tracker-breakdown-item__amount">${formatRupiah(amount)} (${percentage}%)</span>
-      </div>
-      <div class="tracker-breakdown-item__bar">
-        <div class="tracker-breakdown-item__fill" style="width: ${percentage}%; background-color: ${config.barColor};"></div>
-      </div>
-    `;
-    categoryBreakdownListEl.appendChild(itemEl);
-  });
-}
-
-// ==========================================
 // RENDER DAFTAR TRANSAKSI
 // ==========================================
-function render() {
-  // 1. Ambil transaksi yang sesuai bulan aktif
-  const monthlyExpenses = transactions.filter((t) => t.date && t.date.startsWith(currentSelectedMonth));
-
-  // 2. Update summary cards
-  updateSummary(monthlyExpenses);
-
-  // 3. Filter berdasarkan pencarian & kategori
-  let displayList = [...monthlyExpenses];
-
-  if (currentSearchQuery.trim() !== "") {
-    const query = currentSearchQuery.toLowerCase().trim();
-    displayList = displayList.filter((t) => (t.title || "").toLowerCase().includes(query));
-  }
-
-  if (currentCategoryFilter !== "ALL") {
-    displayList = displayList.filter((t) => t.category === currentCategoryFilter);
-  }
-
-  // Urutkan dari tanggal terbaru (newest first)
-  displayList.sort((a, b) => new Date(b.date) - new Date(a.date) || b.id - a.id);
-
-  // 4. Render ke list
+function renderTransactionList(listToRender) {
   transactionListContainer.innerHTML = "";
 
-  if (displayList.length === 0) {
+  if (!listToRender || listToRender.length === 0) {
     emptyStateContainer.classList.remove("visually-hidden");
   } else {
     emptyStateContainer.classList.add("visually-hidden");
 
-    displayList.forEach((item) => {
+    listToRender.forEach((item) => {
       const card = createTransactionElement(item);
       transactionListContainer.appendChild(card);
     });
@@ -371,7 +294,7 @@ function createTransactionElement(item) {
         <span>${catConfig.icon}</span> ${item.category}
       </span>
       <div class="tracker-item__details">
-        <h4 class="tracker-item__title" title="${item.title}">${escapeHtml(item.title)}</h4>
+        <h4 class="tracker-item__title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</h4>
         <span class="tracker-item__date">${formatIndonesianDate(item.date)}</span>
       </div>
     </div>
@@ -395,6 +318,7 @@ function createTransactionElement(item) {
 }
 
 function escapeHtml(string) {
+  if (!string) return "";
   const div = document.createElement("div");
   div.textContent = string;
   return div.innerHTML;
@@ -469,7 +393,7 @@ function resetForm() {
 }
 
 // Event Submit Form
-transactionForm.addEventListener("submit", (e) => {
+transactionForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   if (!validateForm()) return;
@@ -479,39 +403,54 @@ transactionForm.addEventListener("submit", (e) => {
   const date = transactionDateInput.value;
   const category = transactionCategorySelect.value;
 
-  if (editingId) {
-    // Mode Edit
-    transactions = transactions.map((t) =>
-      t.id === editingId
-        ? { ...t, title, amount, date, category, updated_at: new Date().toISOString() }
-        : t
-    );
-    saveTransactions();
-    showToast("Pengeluaran berhasil diperbarui!");
-  } else {
-    // Mode Tambah
-    const newTransaction = {
-      id: Date.now(),
-      title,
-      amount,
-      date,
-      category,
-      created_at: new Date().toISOString()
-    };
-    transactions.unshift(newTransaction);
-    saveTransactions();
-    showToast("Pengeluaran berhasil dicatat!");
-  }
+  submitTransactionBtn.disabled = true;
 
-  // Jika tanggal transaksi berada di luar bulan yang aktif, alihkan filter bulan ke bulan transaksi
-  const transactionMonth = date.substring(0, 7);
-  if (transactionMonth !== currentSelectedMonth) {
-    setMonth(transactionMonth);
-  } else {
-    render();
-  }
+  try {
+    if (editingId) {
+      // Mode Edit (PUT ke backend)
+      const res = await fetch(`${API_BASE_URL}/expenses/${editingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, amount, date, category })
+      });
 
-  resetForm();
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Gagal memperbarui data.");
+      }
+
+      showToast("Pengeluaran berhasil diperbarui!");
+    } else {
+      // Mode Tambah (POST ke backend)
+      const res = await fetch(`${API_BASE_URL}/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, amount, date, category })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Gagal mencatat pengeluaran.");
+      }
+
+      showToast("Pengeluaran berhasil dicatat!");
+    }
+
+    // Jika tanggal transaksi berada di luar bulan yang aktif, alihkan filter bulan ke bulan transaksi
+    const transactionMonth = date.substring(0, 7);
+    if (transactionMonth !== currentSelectedMonth) {
+      setMonth(transactionMonth);
+    } else {
+      await loadDataFromBackend();
+    }
+
+    resetForm();
+  } catch (err) {
+    console.error("Form submit error:", err);
+    showToast(err.message, "error");
+  } finally {
+    submitTransactionBtn.disabled = false;
+  }
 });
 
 cancelEditBtn.addEventListener("click", resetForm);
@@ -535,19 +474,34 @@ function closeDeleteModal() {
   deleteModal.classList.add("visually-hidden");
 }
 
-confirmDeleteBtn.addEventListener("click", () => {
+confirmDeleteBtn.addEventListener("click", async () => {
   if (!transactionToDeleteId) return;
 
-  transactions = transactions.filter((t) => t.id !== transactionToDeleteId);
-  saveTransactions();
+  try {
+    confirmDeleteBtn.disabled = true;
 
-  if (editingId === transactionToDeleteId) {
-    resetForm();
+    const res = await fetch(`${API_BASE_URL}/expenses/${transactionToDeleteId}`, {
+      method: "DELETE"
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || "Gagal menghapus pengeluaran.");
+    }
+
+    if (editingId === transactionToDeleteId) {
+      resetForm();
+    }
+
+    closeDeleteModal();
+    await loadDataFromBackend();
+    showToast("Pengeluaran berhasil dihapus.", "success");
+  } catch (err) {
+    console.error("Delete error:", err);
+    showToast(err.message, "error");
+  } finally {
+    confirmDeleteBtn.disabled = false;
   }
-
-  closeDeleteModal();
-  render();
-  showToast("Pengeluaran berhasil dihapus.", "success");
 });
 
 closeDeleteModalBtn.addEventListener("click", closeDeleteModal);
@@ -567,81 +521,50 @@ function closeExportModal() {
   exportModal.classList.add("visually-hidden");
 }
 
-function downloadFile(content, fileName, contentType) {
-  const blob = new Blob([content], { type: contentType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
 function exportToJson() {
-  const dataStr = JSON.stringify(transactions, null, 2);
-  const fileName = `expense_backup_${getTodayDateString()}.json`;
-  downloadFile(dataStr, fileName, "application/json");
+  window.location.href = `${API_BASE_URL}/export?format=json`;
   closeExportModal();
-  showToast("Data berhasil diekspor ke JSON!");
+  showToast("Mengunduh cadangan data JSON...");
 }
 
 function exportToCsv() {
-  if (transactions.length === 0) {
-    showToast("Belum ada data untuk diekspor ke CSV.", "error");
-    return;
-  }
-
-  const headers = ["ID", "Deskripsi", "Nominal", "Kategori", "Tanggal", "Created_At"];
-  const rows = transactions.map((t) => [
-    t.id,
-    `"${(t.title || "").replace(/"/g, '""')}"`,
-    t.amount,
-    `"${t.category}"`,
-    t.date,
-    t.created_at || ""
-  ]);
-
-  const csvContent = [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-  const fileName = `expense_report_${getTodayDateString()}.csv`;
-  downloadFile(csvContent, fileName, "text/csv;charset=utf-8;");
+  window.location.href = `${API_BASE_URL}/export?format=csv`;
   closeExportModal();
-  showToast("Data berhasil diekspor ke CSV!");
+  showToast("Mengunduh laporan CSV...");
 }
 
-function handleFileImport(event) {
+async function handleFileImport(event) {
   const file = event.target.files[0];
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = function (e) {
+  reader.onload = async function (e) {
     try {
       const importedData = JSON.parse(e.target.result);
 
       if (!Array.isArray(importedData)) {
-        throw new Error("Format JSON harus berupa array transaksi.");
-      }
-
-      // Validasi dasar struktur transaksi
-      const isValidStructure = importedData.every(
-        (item) => item.title && item.amount !== undefined && item.date && item.category
-      );
-
-      if (!isValidStructure) {
-        throw new Error("Struktur file tidak cocok dengan format Expense Tracker.");
+        throw new Error("Format file JSON harus berupa daftar transaksi array.");
       }
 
       const confirmImport = confirm(
-        `Ditemukan ${importedData.length} transaksi pada file. Apakah Anda ingin menimpa data yang ada dengan data impor ini?`
+        `Ditemukan ${importedData.length} transaksi pada file cadangan. Apakah Anda ingin menimpa database dengan data ini?`
       );
 
-      if (confirmImport) {
-        transactions = importedData;
-        saveTransactions();
-        render();
-        showToast(`Berhasil memulihkan ${importedData.length} transaksi!`);
+      if (!confirmImport) return;
+
+      const response = await fetch(`${API_BASE_URL}/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ replace: true, transactions: importedData })
+      });
+
+      const resData = await response.json();
+      if (!response.ok || !resData.success) {
+        throw new Error(resData.message || "Gagal mengimpor data ke server.");
       }
+
+      await loadDataFromBackend();
+      showToast(resData.message || `Berhasil memulihkan ${importedData.length} transaksi!`);
     } catch (err) {
       console.error("Import Error:", err);
       showToast(`Gagal mengimpor file: ${err.message}`, "error");
@@ -677,14 +600,19 @@ monthPicker.addEventListener("change", (e) => {
 prevMonthBtn.addEventListener("click", () => changeMonth(-1));
 nextMonthBtn.addEventListener("click", () => changeMonth(1));
 
+// Debounce pencarian
+let searchTimeout = null;
 searchTransactionInput.addEventListener("input", (e) => {
   currentSearchQuery = e.target.value;
-  render();
+  if (searchTimeout) clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    loadDataFromBackend();
+  }, 250);
 });
 
 filterCategorySelect.addEventListener("change", (e) => {
   currentCategoryFilter = e.target.value;
-  render();
+  loadDataFromBackend();
 });
 
 // Shortcut Escape untuk menutup modal
@@ -697,7 +625,6 @@ window.addEventListener("keydown", (e) => {
 
 // Inisialisasi awal saat halaman dimuat
 document.addEventListener("DOMContentLoaded", () => {
-  transactions = loadTransactions();
   transactionDateInput.value = getTodayDateString();
   setMonth(currentSelectedMonth);
 });
